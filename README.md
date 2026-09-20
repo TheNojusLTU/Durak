@@ -16,6 +16,21 @@ The game uses a standard 36-card deck, from six through ace.
 
 The attack passes to the next player after a successful defense. If the defender picks up, the next attack is made by the player to the defender's left.
 
+## Planned features
+
+The game is planned to include up to 10 features:
+
+1. Multiplayer games.
+2. Player-selected display names.
+3. Customizable profile pictures.
+4. A scoreboard for player results and rankings.
+5. Game lobbies for creating and joining matches.
+6. Turn-based attack and defense gameplay.
+7. Automatic trump-suit selection.
+8. Validation of legal card plays.
+9. Automatic card drawing up to the hand limit.
+10. End-of-game winner and durak identification.
+
 ## Project
 
 This repository contains the Durak game developed for the PSI C# project.
