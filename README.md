@@ -31,9 +31,6 @@ The game is planned to include up to 10 features:
 9. Automatic card drawing up to the hand limit.
 10. End-of-game winner and durak identification.
 
-## Project
-
-This repository contains the Durak game developed for the PSI C# project.
 
 ## Getting started
 
