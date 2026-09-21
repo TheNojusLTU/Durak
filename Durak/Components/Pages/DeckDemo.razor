@@ -1,0 +1,46 @@
+@page "/deck"
+@rendermode InteractiveServer
+@using Durak.Core
+
+<PageTitle>Deck</PageTitle>
+
+<h1>Deck demo</h1>
+
+<p>
+    A shuffled 36-card Durak deck. The bottom card is the <strong>trump</strong>.
+</p>
+
+<button class="btn btn-primary mb-3" @onclick="NewDeck">Shuffle again</button>
+
+@if (_deck.TrumpCard is { } trump)
+{
+    <p>
+        Trump: <span class="badge text-bg-warning fs-6">@trump</span>
+        (@_deck.Count cards in the pile)
+    </p>
+}
+
+<div class="d-flex flex-wrap gap-2">
+    @foreach (Card card in _deck.RemainingCards)
+    {
+        // Trump-suit cards get a highlighted border so the demo is easy to read.
+        string border = card.Suit == _deck.TrumpSuit ? "border-warning" : "border-secondary";
+
+        <div class="border @border rounded px-2 py-1 bg-white">
+            @card
+        </div>
+    }
+</div>
+
+@code {
+    private Deck _deck = new();
+
+    protected override void OnInitialized() => NewDeck();
+
+    private void NewDeck()
+    {
+        _deck = new Deck();
+        // Random.Shared is fine for the UI; game logic and tests will inject their own.
+        _deck.Shuffle(Random.Shared);
+    }
+}
