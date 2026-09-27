@@ -20,6 +20,23 @@
     </p>
 }
 
+<h2 class="h5">Your hand (@_hand.Count)</h2>
+
+<div class="d-flex flex-wrap gap-2 mb-2">
+    @foreach (var card in _hand.Order())
+    {
+        <div class="border border-primary rounded px-2 py-1 bg-white">
+            @card
+        </div>
+    }
+</div>
+
+<button class="btn btn-outline-primary btn-sm mb-4" @onclick="PlayLowestCard" disabled="@_hand.IsEmpty">
+    Play lowest card and draw
+</button>
+
+<h2 class="h5">Pile</h2>
+
 <div class="d-flex flex-wrap gap-2">
     @foreach (Card card in _deck.RemainingCards)
     {
@@ -34,6 +51,7 @@
 
 @code {
     private Deck _deck = new();
+    private Hand _hand = new();
 
     protected override void OnInitialized() => NewDeck();
 
@@ -42,5 +60,14 @@
         _deck = new Deck();
         // Random.Shared is fine for the UI; game logic and tests will inject their own.
         _deck.Shuffle(Random.Shared);
+
+        _hand = new Hand();
+        _hand.Refill(_deck, handSize: 6);
+    }
+
+    private void PlayLowestCard()
+    {
+        _hand.Remove(_hand.Min()!);
+        _hand.Refill(_deck);
     }
 }
