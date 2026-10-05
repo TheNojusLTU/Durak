@@ -8,8 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Durak.Client\Durak.Client.csproj" />
+    <ProjectReference Include="..\JobTracker.Client\JobTracker.Client.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.12" />
+    <Compile Remove="Data\ApplicationDbContext.cs" />
   </ItemGroup>
 
 </Project>
