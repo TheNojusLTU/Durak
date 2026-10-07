@@ -1,5 +1,5 @@
-using Durak.Client.Pages;
-using Durak.Components;
+using JobTracker.Client.Pages;
+using JobTracker.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +30,6 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddInteractiveWebAssemblyRenderMode()
-    .AddAdditionalAssemblies(typeof(Durak.Client._Imports).Assembly);
+    .AddAdditionalAssemblies(typeof(JobTracker.Client._Imports).Assembly);
 
 app.Run();

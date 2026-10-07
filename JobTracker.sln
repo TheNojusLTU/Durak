@@ -2,9 +2,9 @@
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.0.0
 MinimumVisualStudioVersion = 16.0.0.0
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Durak", "Durak\Durak.csproj", "{D820C6BD-DC19-4337-8DBE-F7DFBA19E9B3}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JobTracker", "JobTracker\JobTracker.csproj", "{D820C6BD-DC19-4337-8DBE-F7DFBA19E9B3}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Durak.Client", "Durak.Client\Durak.Client.csproj", "{686E82E8-A588-4818-901E-D8FBBE3C04EE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JobTracker.Client", "JobTracker.Client\JobTracker.Client.csproj", "{686E82E8-A588-4818-901E-D8FBBE3C04EE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
