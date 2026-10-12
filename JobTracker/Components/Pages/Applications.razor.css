@@ -37,6 +37,32 @@
     color: var(--applications-muted);
 }
 
+.applications-add {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 18px;
+    background: var(--applications-accent);
+    color: #fff;
+    font-size: 0.92rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.applications-add:hover {
+    background: #1e5141;
+    color: #fff;
+}
+
+.applications-success {
+    padding: 12px 14px;
+    border: 1px solid #b8d3c4;
+    background: #e8f1ed;
+    color: #286653;
+}
+
 .applications-count {
     margin: 0 0 12px;
     color: var(--applications-muted);
@@ -73,6 +99,16 @@
 
 .applications-table tbody tr:last-child td {
     border-bottom: 0;
+}
+
+.application-edit-link {
+    color: var(--applications-accent);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.application-edit-link:hover {
+    text-decoration: underline;
 }
 
 .application-job-title {
@@ -131,6 +167,12 @@
     border: 1px solid #e5b7b2;
     background: #f8e9e7;
     color: #8a3c34;
+}
+
+.applications-add:focus-visible,
+.application-edit-link:focus-visible {
+    outline: 2px solid var(--applications-accent);
+    outline-offset: 4px;
 }
 
 @media (max-width: 700px) {
