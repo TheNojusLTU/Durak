@@ -1,6 +1,7 @@
 using JobTracker.Client.Pages;
 using JobTracker.Components;
 using JobTracker.Data;
+using System.Net.Mail;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -16,7 +17,16 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection")));
 
-builder.Services.AddIdentityCore<ApplicationUser>()
+builder.Services.AddIdentityCore<ApplicationUser>(options =>
+    {
+        options.User.RequireUniqueEmail = false;
+        options.SignIn.RequireConfirmedAccount = false;
+        options.Password.RequiredLength = 8;
+        options.Password.RequireDigit = true;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireNonAlphanumeric = false;
+    })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddSignInManager();
 builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme)
@@ -48,6 +58,70 @@ app.UseAuthorization();
 
 app.UseAntiforgery();
 
+app.MapPost("/account/register", async (
+    HttpContext httpContext,
+    IAntiforgery antiforgery,
+    UserManager<ApplicationUser> userManager,
+    SignInManager<ApplicationUser> signInManager) =>
+{
+    if (!await antiforgery.IsRequestValidAsync(httpContext))
+    {
+        return Results.BadRequest();
+    }
+
+    var form = await httpContext.Request.ReadFormAsync();
+    var userName = form["Username"].ToString().Trim();
+    var displayName = form["DisplayName"].ToString().Trim();
+    var emailInput = form["Email"].ToString().Trim();
+    var password = form["Password"].ToString();
+    var avatarKey = form["AvatarKey"].ToString();
+
+    string? validationError = null;
+    if (userName.Length is < 3 or > 20)
+    {
+        validationError = "Username must be between 3 and 20 characters.";
+    }
+    else if (displayName.Length is < 3 or > 20)
+    {
+        validationError = "Display name must be between 3 and 20 characters.";
+    }
+    else if (emailInput.Length > 0 && !MailAddress.TryCreate(emailInput, out _))
+    {
+        validationError = "Enter a valid email address, or leave it blank.";
+    }
+    else if (password.Length == 0)
+    {
+        validationError = "Password is required.";
+    }
+    else if (avatarKey.Length > 0 && !AvatarCatalog.Contains(avatarKey))
+    {
+        validationError = "Choose an available avatar.";
+    }
+
+    if (validationError is not null)
+    {
+        return Results.Redirect($"/register?error={Uri.EscapeDataString(validationError)}");
+    }
+
+    var user = new ApplicationUser
+    {
+        UserName = userName,
+        Email = string.IsNullOrWhiteSpace(emailInput) ? null : emailInput,
+        DisplayName = displayName,
+        AvatarKey = string.IsNullOrWhiteSpace(avatarKey) ? AvatarCatalog.Default.Key : avatarKey
+    };
+
+    var createResult = await userManager.CreateAsync(user, password);
+    if (!createResult.Succeeded)
+    {
+        var error = string.Join(" ", createResult.Errors.Select(identityError => identityError.Description));
+        return Results.Redirect($"/register?error={Uri.EscapeDataString(error)}");
+    }
+
+    await signInManager.SignInAsync(user, isPersistent: false);
+    return Results.LocalRedirect("/");
+}).AllowAnonymous();
+
 app.MapPost("/account/login", async (
     HttpContext httpContext,
     IAntiforgery antiforgery,
@@ -61,7 +135,6 @@ app.MapPost("/account/login", async (
     var form = await httpContext.Request.ReadFormAsync();
     var userName = form["Username"].ToString().Trim();
     var password = form["Password"].ToString();
-    var returnUrl = form["ReturnUrl"].ToString();
 
     var result = await signInManager.PasswordSignInAsync(
         userName,
@@ -71,13 +144,7 @@ app.MapPost("/account/login", async (
 
     if (result.Succeeded)
     {
-        var isLocalReturnUrl = returnUrl.StartsWith("/", StringComparison.Ordinal)
-            && !returnUrl.StartsWith("//", StringComparison.Ordinal)
-            && !returnUrl.StartsWith("/\\", StringComparison.Ordinal)
-            && !returnUrl.Contains('\\');
-        var redirectUrl = isLocalReturnUrl ? returnUrl : "/profile";
-
-        return Results.LocalRedirect(redirectUrl);
+        return Results.LocalRedirect("/");
     }
 
     return Results.Redirect($"/login?error={Uri.EscapeDataString("Invalid username or password.")}");

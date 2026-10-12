@@ -15,7 +15,6 @@
 
         <form method="post" action="/account/login" class="account-form">
             <AntiforgeryToken />
-            <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
             <label>
                 Username
                 <input name="Username" required autocomplete="username" />
@@ -35,6 +34,4 @@
     [SupplyParameterFromQuery]
     private string? Error { get; set; }
 
-    [SupplyParameterFromQuery]
-    private string? ReturnUrl { get; set; }
 }
