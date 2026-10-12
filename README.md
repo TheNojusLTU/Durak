@@ -47,4 +47,8 @@ dotnet ef database update --project JobTracker/JobTracker.csproj --startup-proje
 dotnet run --project JobTracker/JobTracker.csproj
 ```
 
-The initial migration creates the Identity tables and `JobApplications`, with each job linked to its owning user. Identity services are registered for protected pages; the visible login and registration forms do not yet have working submission handlers.
+The initial migration creates the Identity tables and `JobApplications`, with each job linked to its owning user.
+
+## Account Registration
+
+Registration uses a unique username (3–20 characters) and password; display name is required (3–20 characters), while email is optional. Email confirmation is disabled for now. Passwords must be at least 8 characters and contain an uppercase letter, a lowercase letter, and a number. ASP.NET Core Identity stores password hashes, and a successful registration signs the user in and redirects to their profile.
