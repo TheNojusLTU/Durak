@@ -19,7 +19,17 @@
             <h1>Your applications</h1>
             <p class="applications-intro">Keep track of the opportunities you have applied for.</p>
         </div>
+        <a class="applications-add" href="/create-application">Add application</a>
     </header>
+
+    @if (Saved)
+    {
+        <p class="applications-success" role="status">Application saved.</p>
+    }
+    @if (!string.IsNullOrWhiteSpace(Error))
+    {
+        <p class="applications-error" role="alert">@Error</p>
+    }
 
     @if (UserId is null)
     {
@@ -49,6 +59,7 @@
                             <th scope="col">Location</th>
                             <th scope="col">Applied</th>
                             <th scope="col">Status</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -64,6 +75,9 @@
                                         @GetStatusLabel(application.Status)
                                     </span>
                                 </td>
+                                <td data-label="Actions">
+                                    <a class="application-edit-link" href="@($"/applications/{application.Id}/edit")">Edit</a>
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -77,6 +91,12 @@
     private string? UserId { get; set; }
 
     private List<JobApplication> JobApplications { get; set; } = [];
+
+    [SupplyParameterFromQuery]
+    private string? Error { get; set; }
+
+    [SupplyParameterFromQuery]
+    private bool Saved { get; set; }
 
     protected override async Task OnInitializedAsync()
     {

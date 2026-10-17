@@ -1,6 +1,8 @@
 using JobTracker.Client.Pages;
 using JobTracker.Components;
 using JobTracker.Data;
+using JobTracker.Models;
+using System.Globalization;
 using System.Net.Mail;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
@@ -57,6 +59,180 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseAntiforgery();
+
+app.MapPost("/account/login", async (
+    HttpContext httpContext,
+    IAntiforgery antiforgery,
+    SignInManager<ApplicationUser> signInManager) =>
+{
+    if (!await antiforgery.IsRequestValidAsync(httpContext))
+    {
+        return Results.BadRequest();
+    }
+
+    var form = await httpContext.Request.ReadFormAsync();
+    var userName = form["Username"].ToString().Trim();
+    var password = form["Password"].ToString();
+    var returnUrl = form["ReturnUrl"].ToString();
+
+    var result = await signInManager.PasswordSignInAsync(
+        userName,
+        password,
+        isPersistent: false,
+        lockoutOnFailure: true);
+
+    if (result.Succeeded)
+    {
+        var isLocalReturnUrl = returnUrl.StartsWith("/", StringComparison.Ordinal)
+            && !returnUrl.StartsWith("//", StringComparison.Ordinal)
+            && !returnUrl.StartsWith("/\\", StringComparison.Ordinal)
+            && !returnUrl.Contains('\\');
+        var redirectUrl = isLocalReturnUrl ? returnUrl : "/profile";
+
+        return Results.LocalRedirect(redirectUrl);
+    }
+
+    return Results.Redirect($"/login?error={Uri.EscapeDataString("Invalid username or password.")}");
+}).AllowAnonymous();
+
+app.MapPost("/account/logout", async (
+    HttpContext httpContext,
+    IAntiforgery antiforgery,
+    SignInManager<ApplicationUser> signInManager) =>
+{
+    if (!await antiforgery.IsRequestValidAsync(httpContext))
+    {
+        return Results.BadRequest();
+    }
+
+    await signInManager.SignOutAsync();
+    return Results.LocalRedirect("/");
+}).RequireAuthorization();
+
+app.MapPost("/account/applications/save", async (
+    HttpContext httpContext,
+    IAntiforgery antiforgery,
+    UserManager<ApplicationUser> userManager,
+    ApplicationDbContext dbContext) =>
+{
+    if (!await antiforgery.IsRequestValidAsync(httpContext))
+    {
+        return Results.BadRequest();
+    }
+
+    var user = await userManager.GetUserAsync(httpContext.User);
+    if (user is null)
+    {
+        return Results.Challenge();
+    }
+
+    var form = await httpContext.Request.ReadFormAsync();
+    var idInput = form["Id"].ToString();
+    var applicationId = 0;
+    if (idInput.Length > 0 && (!int.TryParse(idInput, out applicationId) || applicationId < 0))
+    {
+        return Results.BadRequest();
+    }
+
+    var formUrl = applicationId > 0
+        ? $"/applications/{applicationId}/edit"
+        : "/create-application";
+    IResult Invalid(string message) =>
+        Results.Redirect($"{formUrl}?error={Uri.EscapeDataString(message)}");
+
+    JobApplication? application = null;
+    if (applicationId > 0)
+    {
+        application = await dbContext.JobApplications
+            .SingleOrDefaultAsync(item => item.Id == applicationId && item.UserId == user.Id);
+        if (application is null)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    var companyName = form["CompanyName"].ToString().Trim();
+    var jobTitle = form["JobTitle"].ToString().Trim();
+    var location = form["Location"].ToString().Trim();
+    var salaryInput = form["Salary"].ToString();
+    var jobUrl = form["JobUrl"].ToString().Trim();
+    var applicationDateInput = form["ApplicationDate"].ToString();
+    var statusInput = form["Status"].ToString();
+    var notes = form["Notes"].ToString().Trim();
+
+    if (companyName.Length is < 1 or > 200)
+    {
+        return Invalid("Company name is required and must be 200 characters or fewer.");
+    }
+    if (jobTitle.Length is < 1 or > 200)
+    {
+        return Invalid("Job title is required and must be 200 characters or fewer.");
+    }
+    if (location.Length > 200)
+    {
+        return Invalid("Location must be 200 characters or fewer.");
+    }
+    if (jobUrl.Length > 2048 ||
+        (jobUrl.Length > 0 &&
+         (!Uri.TryCreate(jobUrl, UriKind.Absolute, out var parsedJobUrl) ||
+          (parsedJobUrl.Scheme != Uri.UriSchemeHttp && parsedJobUrl.Scheme != Uri.UriSchemeHttps))))
+    {
+        return Invalid("Enter a valid http or https job posting URL.");
+    }
+    if (notes.Length > 5000)
+    {
+        return Invalid("Notes must be 5,000 characters or fewer.");
+    }
+
+    decimal? salary = null;
+    if (salaryInput.Length > 0)
+    {
+        if (!decimal.TryParse(
+                salaryInput,
+                NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
+                CultureInfo.InvariantCulture,
+                out var parsedSalary) ||
+            parsedSalary < 0)
+        {
+            return Invalid("Salary must be a non-negative number.");
+        }
+        salary = parsedSalary;
+    }
+
+    if (!DateTime.TryParseExact(
+            applicationDateInput,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsedDate))
+    {
+        return Invalid("Enter a valid application date.");
+    }
+
+    if (!Enum.TryParse<ApplicationStatus>(statusInput, ignoreCase: false, out var status) ||
+        !Enum.IsDefined(status))
+    {
+        return Invalid("Choose a valid application status.");
+    }
+
+    application ??= new JobApplication { UserId = user.Id };
+    application.CompanyName = companyName;
+    application.JobTitle = jobTitle;
+    application.Location = string.IsNullOrWhiteSpace(location) ? null : location;
+    application.Salary = salary;
+    application.JobUrl = string.IsNullOrWhiteSpace(jobUrl) ? null : jobUrl;
+    application.ApplicationDate = DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc);
+    application.Status = status;
+    application.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes;
+
+    if (applicationId == 0)
+    {
+        dbContext.JobApplications.Add(application);
+    }
+
+    await dbContext.SaveChangesAsync();
+    return Results.LocalRedirect("/applications?saved=true");
+}).RequireAuthorization();
 
 app.MapPost("/account/register", async (
     HttpContext httpContext,
