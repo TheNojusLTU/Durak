@@ -1,14 +1,30 @@
 @page "/"
+@using Microsoft.AspNetCore.Components.Authorization
 
 <PageTitle>Home | JobTracker</PageTitle>
 
-<main class="home-page">
-    <p class="home-brand">JobTracker</p>
-    <h1>Keep your job search organized.</h1>
-    <p class="home-description">A simple place to keep track of where things stand.</p>
+<AuthorizeView>
+    <Authorized>
+        <main class="home-page">
+            <p class="home-brand">Welcome back</p>
+            <h1>Your job search, in one place.</h1>
+            <p class="home-description">Keep your opportunities moving forward, one application at a time.</p>
 
-    <div class="home-actions">
-        <a class="home-primary" href="/register">Create your profile</a>
-        <a class="home-secondary" href="/login">Sign in</a>
-    </div>
-</main>
+            <div class="home-actions">
+                <a class="home-primary" href="/create-application">Add an application</a>
+            </div>
+        </main>
+    </Authorized>
+    <NotAuthorized>
+        <main class="home-page">
+            <p class="home-brand">JobTracker</p>
+            <h1>Keep your job search organized.</h1>
+            <p class="home-description">A simple place to keep track of where things stand.</p>
+
+            <div class="home-actions">
+                <a class="home-primary" href="/register">Create your profile</a>
+                <a class="home-secondary" href="/login">Sign in</a>
+            </div>
+        </main>
+    </NotAuthorized>
+</AuthorizeView>

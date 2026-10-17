@@ -295,8 +295,50 @@ app.MapPost("/account/register", async (
     }
 
     await signInManager.SignInAsync(user, isPersistent: false);
-    return Results.LocalRedirect("/profile");
+    return Results.LocalRedirect("/");
 }).AllowAnonymous();
+
+app.MapPost("/account/login", async (
+    HttpContext httpContext,
+    IAntiforgery antiforgery,
+    SignInManager<ApplicationUser> signInManager) =>
+{
+    if (!await antiforgery.IsRequestValidAsync(httpContext))
+    {
+        return Results.BadRequest();
+    }
+
+    var form = await httpContext.Request.ReadFormAsync();
+    var userName = form["Username"].ToString().Trim();
+    var password = form["Password"].ToString();
+
+    var result = await signInManager.PasswordSignInAsync(
+        userName,
+        password,
+        isPersistent: false,
+        lockoutOnFailure: true);
+
+    if (result.Succeeded)
+    {
+        return Results.LocalRedirect("/");
+    }
+
+    return Results.Redirect($"/login?error={Uri.EscapeDataString("Invalid username or password.")}");
+}).AllowAnonymous();
+
+app.MapPost("/account/logout", async (
+    HttpContext httpContext,
+    IAntiforgery antiforgery,
+    SignInManager<ApplicationUser> signInManager) =>
+{
+    if (!await antiforgery.IsRequestValidAsync(httpContext))
+    {
+        return Results.BadRequest();
+    }
+
+    await signInManager.SignOutAsync();
+    return Results.LocalRedirect("/");
+}).RequireAuthorization();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
