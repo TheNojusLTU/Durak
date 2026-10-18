@@ -52,3 +52,22 @@ The initial migration creates the Identity tables and `JobApplications`, with ea
 ## Account Registration
 
 Registration uses a unique username (3–20 characters) and password; display name is required (3–20 characters), while email is optional. Email confirmation is disabled for now. Passwords must be at least 8 characters and contain an uppercase letter, a lowercase letter, and a number. ASP.NET Core Identity stores password hashes, and a successful registration signs the user in and redirects to their profile.
+
+## React Frontend
+Prerequisite: Node.js 22.x (tested with v22.23.1) and npm 10 or newer.
+
+The separate React + TypeScript frontend is in `JobTracker.Web` and uses Vite. It is currently a static UI scaffold; API integration and account/application behavior are not included yet.
+
+Install dependencies and start the development server from the repository root:
+
+```bash
+npm --prefix JobTracker.Web install
+npm --prefix JobTracker.Web run dev
+```
+
+Open the local URL printed by Vite. Check the frontend with ESLint and a production build:
+
+```bash
+npm --prefix JobTracker.Web run lint
+npm --prefix JobTracker.Web run build
+```
