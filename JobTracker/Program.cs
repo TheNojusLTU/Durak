@@ -298,6 +298,51 @@ app.MapPost("/account/register", async (
     return Results.LocalRedirect("/profile");
 }).AllowAnonymous();
 
+app.MapPost("/account/applications/delete", async (
+    HttpContext httpContext,
+    IAntiforgery antiforgery,
+    UserManager<ApplicationUser> userManager,
+    ApplicationDbContext dbContext) =>
+{
+    // 1. Validate Anti-forgery token
+    if (!await antiforgery.IsRequestValidAsync(httpContext))
+    {
+        return Results.BadRequest("Anti-forgery token validation failed.");
+    }
+
+    // 2. Get the current user
+    var user = await userManager.GetUserAsync(httpContext.User);
+    if (user is null)
+    {
+        return Results.Challenge();
+    }
+
+    // 3. Read the form data to extract the Application ID
+    var form = await httpContext.Request.ReadFormAsync();
+    var idInput = form["Id"].ToString();
+    
+    if (!int.TryParse(idInput, out var applicationId) || applicationId <= 0)
+    {
+        return Results.BadRequest("Invalid Application ID.");
+    }
+
+    // 4. Find the application belonging to this user
+    var application = await dbContext.JobApplications
+        .SingleOrDefaultAsync(item => item.Id == applicationId && item.UserId == user.Id);
+
+    if (application is null)
+    {
+        return Results.NotFound();
+    }
+
+    // 5. Delete and save
+    dbContext.JobApplications.Remove(application);
+    await dbContext.SaveChangesAsync();
+
+    // 6. Redirect back to list
+    return Results.LocalRedirect("/applications?deleted=true");
+}).RequireAuthorization();
+
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()

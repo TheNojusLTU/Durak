@@ -76,8 +76,20 @@
                                     </span>
                                 </td>
                                 <td data-label="Actions">
-                                    <a class="application-edit-link" href="@($"/applications/{application.Id}/edit")">Edit</a>
-                                </td>
+    <div class="d-flex align-items-center gap-2">
+        <a class="btn btn-outline-primary btn-sm" href="@($"/applications/{application.Id}/edit")">
+            Edit
+        </a>
+        
+        <form action="/account/applications/delete" method="post" class="m-0">
+            <AntiforgeryToken />
+            <input type="hidden" name="Id" value="@application.Id" />
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+                Delete
+            </button>
+        </form>
+    </div>
+</td>
                             </tr>
                         }
                     </tbody>
