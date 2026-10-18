@@ -55,9 +55,6 @@
 
 .home-primary {
     justify-content: center;
-}
-
-.home-primary {
     padding: 0 16px;
     color: #fff;
     background: var(--home-accent);
