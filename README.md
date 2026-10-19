@@ -50,7 +50,9 @@ Open the frontend URL printed by Vite. Requests to `/api` are forwarded to `http
 
 The server no longer hosts Blazor pages. The old form routes `/account/login`, `/account/logout`, `/account/register`, and `/account/applications/save` return **404**. Their UI files remain for later cleanup.
 
-Database models and migrations are preserved. Cookie authentication APIs are implemented in KAN-70; see [authentication endpoints, CSRF setup, and API checks](docs/authentication.md). The React frontend now provides registration, login, and cookie-backed session handling against that API. KAN-71 provides application CRUD, filtering, and pagination endpoints; connecting those endpoints to the dashboard remains follow-up work.
+Database models and migrations are preserved. Cookie authentication APIs are implemented in KAN-70; see [authentication endpoints, CSRF setup, and API checks](docs/authentication.md). The React frontend provides registration, login, and cookie-backed session handling. Authenticated users can list, search/filter, create, and edit applications, including updating their status, through the KAN-71 API. Application write requests include the API's required CSRF token.
+
+The React application list also supports importing CSV files through `POST /api/applications/import`. The CSV must have these columns, in order: `CompanyName,JobTitle,Location,Salary,JobUrl,ApplicationDate,Status,Notes`. Use `YYYY-MM-DD` dates, invariant decimal notation, and a valid status name; optional values may be left blank. Imports are limited to 1 MB and 500 rows and are all-or-nothing.
 
 ## Checks
 

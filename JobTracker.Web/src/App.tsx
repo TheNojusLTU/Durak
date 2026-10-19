@@ -1,117 +1,107 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import './App.css'
+import { AuthScreen, type AuthMode } from './AuthScreen'
+import {
+  ApiError,
+  apiRequest,
+  createApplication,
+  getApplication,
+  getApplications,
+  getCurrentUser,
+  importApplications,
+  refreshCsrfToken,
+  updateApplication,
+  type ApplicationRequest,
+  type ApplicationStatus,
+  type AuthUser,
+  type JobApplication,
+  type PagedResponse,
+} from './api'
 
-type AuthUser = {
-  id: string
-  username: string
-  displayName: string
-  email: string | null
-  avatarKey: string
+type ApplicationDraft = {
+  companyName: string
+  jobTitle: string
+  location: string
+  salary: string
+  jobUrl: string
+  applicationDate: string
+  status: ApplicationStatus
+  notes: string
 }
 
-type AuthMode = 'login' | 'register'
+const statuses: ApplicationStatus[] = ['Saved', 'Applied', 'Interview', 'Offer', 'Rejected', 'Withdrawn']
 
-type ApiProblem = {
-  title?: string
-  detail?: string
-  errors?: Record<string, string[]>
+function localDate(): string {
+  const now = new Date()
+  const offset = now.getTimezoneOffset() * 60_000
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10)
 }
 
-type CsrfResponse = {
-  requestToken: string
-  headerName: string
+function emptyDraft(): ApplicationDraft {
+  return {
+    companyName: '',
+    jobTitle: '',
+    location: '',
+    salary: '',
+    jobUrl: '',
+    applicationDate: localDate(),
+    status: 'Saved',
+    notes: '',
+  }
 }
 
-let csrfToken: CsrfResponse | null = null
+function draftFrom(application: JobApplication): ApplicationDraft {
+  return {
+    companyName: application.companyName,
+    jobTitle: application.jobTitle,
+    location: application.location ?? '',
+    salary: application.salary?.toString() ?? '',
+    jobUrl: application.jobUrl ?? '',
+    applicationDate: application.applicationDate.slice(0, 10),
+    status: application.status,
+    notes: application.notes ?? '',
+  }
+}
 
-class ApiError extends Error {
-  readonly status: number
-
-  constructor(message: string, status: number) {
-    super(message)
-    this.status = status
+function requestFrom(draft: ApplicationDraft): ApplicationRequest {
+  return {
+    companyName: draft.companyName.trim(),
+    jobTitle: draft.jobTitle.trim(),
+    location: draft.location.trim() || null,
+    salary: draft.salary === '' ? null : Number(draft.salary),
+    jobUrl: draft.jobUrl.trim() || null,
+    applicationDate: draft.applicationDate,
+    status: draft.status,
+    notes: draft.notes.trim() || null,
   }
 }
 
 const readModeFromPath = (): AuthMode =>
   window.location.pathname === '/register' ? 'register' : 'login'
 
-async function readProblem(response: Response): Promise<never> {
-  const problem = await response.json().catch(() => null) as ApiProblem | null
-  const fieldMessages = problem?.errors
-    ? Object.values(problem.errors).flat().join(' ')
-    : ''
-  throw new ApiError(
-    fieldMessages || problem?.detail || problem?.title || `Request failed (${response.status}).`,
-    response.status,
-  )
-}
-
-async function getCsrfToken(): Promise<CsrfResponse> {
-  if (csrfToken) return csrfToken
-
-  let response: Response
-  try {
-    response = await fetch('/api/auth/csrf', { credentials: 'include', cache: 'no-store' })
-  } catch {
-    throw new Error('Unable to reach JobTracker. Check your connection and try again.')
-  }
-
-  if (!response.ok) return readProblem(response)
-  csrfToken = await response.json() as CsrfResponse
-  return csrfToken
-}
-
-async function refreshCsrfToken(): Promise<void> {
-  csrfToken = null
-  await getCsrfToken()
-}
-
-async function postAuth<T>(path: string, body?: object): Promise<T> {
-  const csrf = await getCsrfToken()
-  let response: Response
-  try {
-    response = await fetch(path, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        [csrf.headerName]: csrf.requestToken,
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    })
-  } catch {
-    throw new Error('Unable to reach JobTracker. Check your connection and try again.')
-  }
-
-  if (!response.ok) {
-    if (response.status === 400) csrfToken = null
-    return readProblem(response)
-  }
-  return response.status === 204 ? undefined as T : response.json() as Promise<T>
-}
-
-async function getCurrentUser(): Promise<AuthUser | null> {
-  let response: Response
-  try {
-    response = await fetch('/api/auth/me', {
-      credentials: 'include',
-      cache: 'no-store',
-    })
-  } catch {
-    throw new Error('Unable to reach JobTracker. Check your connection and try again.')
-  }
-
-  if (response.status === 401) return null
-  if (!response.ok) return readProblem(response)
-  return response.json() as Promise<AuthUser>
-}
-
 function App() {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [mode, setMode] = useState<AuthMode>(readModeFromPath)
-  const [loading, setLoading] = useState(true)
+  const [sessionLoading, setSessionLoading] = useState(true)
   const [sessionError, setSessionError] = useState('')
+  const [applications, setApplications] = useState<PagedResponse<JobApplication> | null>(null)
+  const [applicationsLoading, setApplicationsLoading] = useState(false)
+  const [applicationsError, setApplicationsError] = useState('')
+  const [page, setPage] = useState(1)
+  const [searchInput, setSearchInput] = useState('')
+  const [statusInput, setStatusInput] = useState<ApplicationStatus | ''>('')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<ApplicationStatus | ''>('')
+  const [refreshCount, setRefreshCount] = useState(0)
+  const [draft, setDraft] = useState<ApplicationDraft | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [formError, setFormError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [loadingEditId, setLoadingEditId] = useState<number | null>(null)
+  const [changingStatusId, setChangingStatusId] = useState<number | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importMessage, setImportMessage] = useState('')
+  const [importError, setImportError] = useState('')
 
   useEffect(() => {
     let active = true
@@ -125,7 +115,7 @@ function App() {
         }
       })
       .finally(() => {
-        if (active) setLoading(false)
+        if (active) setSessionLoading(false)
       })
 
     const handlePopState = () => setMode(readModeFromPath())
@@ -136,6 +126,40 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!user) return
+
+    let active = true
+    const loadApplications = async () => {
+      await Promise.resolve()
+      if (!active) return
+
+      setApplicationsLoading(true)
+      setApplicationsError('')
+      try {
+        const result = await getApplications(page, search, statusFilter)
+        if (active) setApplications(result)
+      } catch (error) {
+        if (!active) return
+        if (error instanceof ApiError && error.status === 401) {
+          setApplications(null)
+          setDraft(null)
+          setUser(null)
+          setSessionError('Your session has expired. Please sign in again.')
+        } else {
+          setApplicationsError(error instanceof Error ? error.message : 'Unable to load applications.')
+        }
+      } finally {
+        if (active) setApplicationsLoading(false)
+      }
+    }
+    void loadApplications()
+
+    return () => {
+      active = false
+    }
+  }, [user, page, search, statusFilter, refreshCount])
+
   const navigate = (nextMode: AuthMode | 'home') => {
     const path = nextMode === 'home' ? '/' : `/${nextMode}`
     window.history.pushState({}, '', path)
@@ -145,6 +169,11 @@ function App() {
   const handleAuthenticated = async (authenticatedUser: AuthUser) => {
     setSessionError('')
     setUser(authenticatedUser)
+    setPage(1)
+    setSearchInput('')
+    setStatusInput('')
+    setSearch('')
+    setStatusFilter('')
     window.history.pushState({}, '', '/')
     try {
       await refreshCsrfToken()
@@ -156,8 +185,15 @@ function App() {
   const handleLogout = async () => {
     setSessionError('')
     try {
-      await postAuth<void>('/api/auth/logout')
+      await apiRequest<void>('/api/auth/logout', { method: 'POST' })
       setUser(null)
+      setApplications(null)
+      setDraft(null)
+      setSearchInput('')
+      setStatusInput('')
+      setSearch('')
+      setStatusFilter('')
+      setPage(1)
       navigate('login')
       try {
         await refreshCsrfToken()
@@ -166,6 +202,8 @@ function App() {
       }
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
+        setApplications(null)
+        setDraft(null)
         setUser(null)
         navigate('login')
         setSessionError('Your session has expired. Please sign in again.')
@@ -175,7 +213,135 @@ function App() {
     }
   }
 
-  if (loading) {
+  const openCreateForm = () => {
+    setFormError('')
+    setEditingId(null)
+    setDraft(emptyDraft())
+  }
+
+  const openEditForm = async (application: JobApplication) => {
+    setFormError('')
+    setLoadingEditId(application.id)
+    try {
+      const latest = await getApplication(application.id)
+      setEditingId(latest.id)
+      setDraft(draftFrom(latest))
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setApplications(null)
+        setDraft(null)
+        setUser(null)
+        setSessionError('Your session has expired. Please sign in again.')
+      } else {
+        setApplicationsError(error instanceof Error ? error.message : 'Unable to load this application.')
+      }
+    } finally {
+      setLoadingEditId(null)
+    }
+  }
+
+  const handleApplicationError = (error: unknown, fallback: string) => {
+    if (error instanceof ApiError && error.status === 401) {
+      setApplications(null)
+      setDraft(null)
+      setUser(null)
+      setSessionError('Your session has expired. Please sign in again.')
+      return
+    }
+    setFormError(error instanceof Error ? error.message : fallback)
+  }
+
+  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!draft) return
+    setFormError('')
+    setSaving(true)
+    try {
+      if (editingId === null) {
+        await createApplication(requestFrom(draft))
+        setSearchInput('')
+        setStatusInput('')
+        setSearch('')
+        setStatusFilter('')
+      } else {
+        await updateApplication(editingId, requestFrom(draft))
+      }
+      setDraft(null)
+      setEditingId(null)
+      setPage(1)
+      setRefreshCount((count) => count + 1)
+    } catch (error) {
+      handleApplicationError(error, 'Unable to save this application.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleImport = async (file: File) => {
+    setImportMessage('')
+    setImportError('')
+    setImporting(true)
+    try {
+      const result = await importApplications(file)
+      setImportMessage(`Imported ${result.importedCount} ${result.importedCount === 1 ? 'application' : 'applications'}.`)
+      setSearchInput('')
+      setStatusInput('')
+      setSearch('')
+      setStatusFilter('')
+      setPage(1)
+      setRefreshCount((count) => count + 1)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setApplications(null)
+        setDraft(null)
+        setUser(null)
+        setSessionError('Your session has expired. Please sign in again.')
+      } else {
+        setImportError(error instanceof Error ? error.message : 'Unable to import applications.')
+      }
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleStatusChange = async (application: JobApplication, nextStatus: ApplicationStatus) => {
+    if (nextStatus === application.status) return
+    setApplicationsError('')
+    setChangingStatusId(application.id)
+    try {
+      await updateApplication(application.id, {
+        companyName: application.companyName,
+        jobTitle: application.jobTitle,
+        location: application.location,
+        salary: application.salary,
+        jobUrl: application.jobUrl,
+        applicationDate: application.applicationDate,
+        status: nextStatus,
+        notes: application.notes,
+      })
+      setRefreshCount((count) => count + 1)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setApplications(null)
+        setDraft(null)
+        setUser(null)
+        setSessionError('Your session has expired. Please sign in again.')
+      } else {
+        setApplicationsError(error instanceof Error ? error.message : 'Unable to update application status.')
+      }
+    } finally {
+      setChangingStatusId(null)
+    }
+  }
+
+  const applyFilters = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setPage(1)
+    setSearch(searchInput)
+    setStatusFilter(statusInput)
+  }
+
+  if (sessionLoading) {
     return <main className="session-loading" aria-live="polite">Loading your workspace…</main>
   }
 
@@ -238,15 +404,15 @@ function App() {
           <section className="summary-row" aria-label="Application summary">
             <article className="summary-item">
               <span className="summary-label">TOTAL APPLICATIONS</span>
-              <strong>0</strong>
+              <strong>{applications?.totalCount ?? '—'}</strong>
             </article>
             <article className="summary-item">
-              <span className="summary-label">IN PROGRESS</span>
-              <strong>0</strong>
+              <span className="summary-label">IN PROGRESS ON PAGE</span>
+              <strong>{applications?.items.filter((application) => ['Applied', 'Interview'].includes(application.status)).length ?? '—'}</strong>
             </article>
             <article className="summary-item">
-              <span className="summary-label">UPCOMING INTERVIEWS</span>
-              <strong>0</strong>
+              <span className="summary-label">INTERVIEWS ON PAGE</span>
+              <strong>{applications?.items.filter((application) => application.status === 'Interview').length ?? '—'}</strong>
             </article>
           </section>
 
@@ -256,14 +422,133 @@ function App() {
                 <p className="eyebrow">YOUR TRACKER</p>
                 <h2 id="applications-title">Applications</h2>
               </div>
-              <span className="section-count">0 entries</span>
+              <div className="application-toolbar">
+                <label className={`import-button${importing ? ' is-disabled' : ''}`}>
+                  {importing ? 'Importing…' : 'Import CSV'}
+                  <input
+                    accept=".csv,text/csv"
+                    aria-label="Import applications from CSV"
+                    className="file-input"
+                    disabled={importing}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0]
+                      event.currentTarget.value = ''
+                      if (file) void handleImport(file)
+                    }}
+                    type="file"
+                  />
+                </label>
+                <button className="add-button" type="button" onClick={openCreateForm}>+ Add application</button>
+              </div>
             </div>
+            <p className="import-hint">CSV columns: CompanyName, JobTitle, Location, Salary, JobUrl, ApplicationDate, Status, Notes</p>
+            {importMessage && <p className="form-success" role="status">{importMessage}</p>}
+            {importError && <p className="form-error" role="alert">{importError}</p>}
 
-            <div className="empty-state">
-              <span className="empty-mark" aria-hidden="true">+</span>
-              <h3>Your list starts here</h3>
-              <p>When application tracking is connected, your roles and next steps will appear here.</p>
-            </div>
+            {draft && (
+              <ApplicationForm
+                draft={draft}
+                editing={editingId !== null}
+                error={formError}
+                saving={saving}
+                onCancel={() => {
+                  setDraft(null)
+                  setEditingId(null)
+                  setFormError('')
+                }}
+                onChange={setDraft}
+                onSubmit={handleSave}
+              />
+            )}
+
+            <form className="application-filters" onSubmit={applyFilters}>
+              <label className="filter-search">
+                <span className="visually-hidden">Search applications</span>
+                <input
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Search company or job title"
+                  value={searchInput}
+                />
+              </label>
+              <label className="filter-status">
+                <span className="visually-hidden">Filter by status</span>
+                <select value={statusInput} onChange={(event) => setStatusInput(event.target.value as ApplicationStatus | '')}>
+                  <option value="">All statuses</option>
+                  {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </label>
+              <button className="filter-button" type="submit">Filter</button>
+            </form>
+
+            {applicationsError && <p className="notice-error" role="alert">{applicationsError}</p>}
+            {applicationsLoading && <p className="list-message" aria-live="polite">Loading applications…</p>}
+
+            {!applicationsLoading && applications && applications.items.length === 0 && (
+              <div className="empty-state">
+                <span className="empty-mark" aria-hidden="true">+</span>
+                <h3>{search || statusFilter ? 'No matching applications' : 'Your list starts here'}</h3>
+                <p>{search || statusFilter ? 'Try changing your search or status filter.' : 'Add your first role to keep your job search organized.'}</p>
+                {!search && !statusFilter && <button className="text-button" type="button" onClick={openCreateForm}>Add your first application</button>}
+              </div>
+            )}
+
+            {!applicationsLoading && applications && applications.items.length > 0 && (
+              <>
+                <div className="applications-table-wrap">
+                  <table className="applications-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Role</th>
+                        <th scope="col">Applied</th>
+                        <th scope="col">Status</th>
+                        <th scope="col"><span className="visually-hidden">Actions</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {applications.items.map((application) => (
+                        <tr key={application.id}>
+                          <td>
+                            <strong>{application.jobTitle}</strong>
+                            <span className="application-company">{application.companyName}{application.location ? ` · ${application.location}` : ''}</span>
+                          </td>
+                          <td>{new Date(`${application.applicationDate.slice(0, 10)}T00:00:00`).toLocaleDateString()}</td>
+                          <td>
+                            <label className="status-control">
+                              <span className="visually-hidden">Status for {application.jobTitle} at {application.companyName}</span>
+                              <select
+                                disabled={changingStatusId === application.id}
+                                onChange={(event) => void handleStatusChange(application, event.target.value as ApplicationStatus)}
+                                value={application.status}
+                              >
+                                {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                              </select>
+                            </label>
+                          </td>
+                          <td className="application-actions">
+                            <button
+                              className="text-button"
+                              disabled={loadingEditId === application.id}
+                              onClick={() => void openEditForm(application)}
+                              type="button"
+                            >
+                              {loadingEditId === application.id ? 'Loading…' : 'Edit'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="pagination">
+                  <span>{applications.totalCount} {applications.totalCount === 1 ? 'application' : 'applications'}</span>
+                  <div>
+                    <button className="filter-button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)} type="button">Previous</button>
+                    <span>Page {applications.page} of {Math.max(1, applications.totalPages)}</span>
+                    <button className="filter-button" disabled={page >= applications.totalPages} onClick={() => setPage((current) => current + 1)} type="button">Next</button>
+                  </div>
+                </div>
+              </>
+            )}
           </section>
         </section>
       </main>
@@ -271,161 +556,81 @@ function App() {
   )
 }
 
-type AuthScreenProps = {
-  mode: AuthMode
-  initialError: string
-  onModeChange: (mode: AuthMode) => void
-  onAuthenticated: (user: AuthUser) => Promise<void>
+type ApplicationFormProps = {
+  draft: ApplicationDraft
+  editing: boolean
+  error: string
+  saving: boolean
+  onCancel: () => void
+  onChange: (draft: ApplicationDraft) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }
 
-function AuthScreen({ mode, initialError, onModeChange, onAuthenticated }: AuthScreenProps) {
-  const [username, setUsername] = useState('')
-  const [displayName, setDisplayName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState(initialError)
-  const [submitting, setSubmitting] = useState(false)
-  const registering = mode === 'register'
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError('')
-    setSubmitting(true)
-    try {
-      const authenticatedUser = await postAuth<AuthUser>(
-        registering ? '/api/auth/register' : '/api/auth/login',
-        registering
-          ? { username, displayName, password, email: email || null }
-          : { username, password },
-      )
-      await onAuthenticated(authenticatedUser)
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to authenticate. Please try again.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const switchMode = (nextMode: AuthMode) => {
-    setError('')
-    onModeChange(nextMode)
-  }
+function ApplicationForm({
+  draft,
+  editing,
+  error,
+  saving,
+  onCancel,
+  onChange,
+  onSubmit,
+}: ApplicationFormProps) {
+  const update = <K extends keyof ApplicationDraft>(key: K, value: ApplicationDraft[K]) =>
+    onChange({ ...draft, [key]: value })
 
   return (
-    <main className="auth-page">
-      <section className="auth-story" aria-label="JobTracker introduction">
-        <a className="brand auth-brand" href="/">
-          <span className="brand-mark" aria-hidden="true">J</span>
-          <span>JobTracker</span>
-        </a>
-        <div className="story-copy">
-          <p className="eyebrow">MAKE YOUR NEXT MOVE</p>
-          <h1>A little more<br /><em>clarity.</em></h1>
-          <p>Keep every opportunity, conversation, and next step in one thoughtful workspace.</p>
+    <section className="application-editor" aria-labelledby="application-form-title">
+      <div className="editor-heading">
+        <div>
+          <p className="eyebrow">{editing ? 'UPDATE YOUR TRACKER' : 'NEW OPPORTUNITY'}</p>
+          <h3 id="application-form-title">{editing ? 'Edit application' : 'Add an application'}</h3>
         </div>
-        <p className="story-foot">A calmer way to move your career forward.</p>
-      </section>
-
-      <section className="auth-panel" aria-labelledby="auth-title">
-        <div className="auth-form-wrap">
-          <p className="eyebrow">{registering ? 'GET STARTED' : 'WELCOME BACK'}</p>
-          <h2 id="auth-title">{registering ? 'Create your account' : 'Sign in to your account'}</h2>
-          <p className="auth-subtitle">
-            {registering ? 'Start organizing your job search today.' : 'Pick up where your job search left off.'}
-          </p>
-
-          <form className="auth-form" onSubmit={handleSubmit}>
-            {registering && (
-              <>
-                <label className="form-field">
-                  <span>Your name</span>
-                  <input
-                    autoComplete="name"
-                    maxLength={20}
-                    minLength={3}
-                    name="displayName"
-                    onChange={(event) => setDisplayName(event.target.value)}
-                    placeholder="Jordan Lee"
-                    required
-                    value={displayName}
-                  />
-                </label>
-                <label className="form-field">
-                  <span>Username</span>
-                  <input
-                    autoComplete="username"
-                    maxLength={20}
-                    minLength={3}
-                    name="username"
-                    onChange={(event) => setUsername(event.target.value)}
-                    placeholder="jordanlee"
-                    required
-                    value={username}
-                  />
-                </label>
-                <label className="form-field">
-                  <span>Email <span className="optional-label">OPTIONAL</span></span>
-                  <input
-                    autoComplete="email"
-                    name="email"
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="you@example.com"
-                    type="email"
-                    value={email}
-                  />
-                </label>
-              </>
-            )}
-            {!registering && (
-              <label className="form-field">
-                <span>Username</span>
-                <input
-                  autoComplete="username"
-                  minLength={3}
-                  name="username"
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="Your username"
-                  required
-                  value={username}
-                />
-              </label>
-            )}
-            <label className="form-field">
-              <span>Password</span>
-              <input
-                autoComplete={registering ? 'new-password' : 'current-password'}
-                minLength={registering ? 8 : undefined}
-                name="password"
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder={registering ? 'At least 8 characters' : 'Your password'}
-                required
-                type="password"
-                value={password}
-              />
-              {registering && <small>Use at least 8 characters with an uppercase letter and a number.</small>}
-            </label>
-
-            {error && <p className="form-error" role="alert">{error}</p>}
-
-            <button className="submit-button" disabled={submitting} type="submit">
-              {submitting ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}
-              {!submitting && <span aria-hidden="true">→</span>}
-            </button>
-          </form>
-
-          <p className="auth-switch">
-            {registering ? 'Already have an account?' : 'New to JobTracker?'}{' '}
-            <button
-              className="text-button"
-              onClick={() => switchMode(registering ? 'login' : 'register')}
-              type="button"
-            >
-              {registering ? 'Sign in' : 'Create an account'}
-            </button>
-          </p>
+        <button className="text-button" type="button" onClick={onCancel}>Cancel</button>
+      </div>
+      <form className="application-form" onSubmit={onSubmit}>
+        <label className="form-field">
+          <span>Company</span>
+          <input maxLength={200} onChange={(event) => update('companyName', event.target.value)} required value={draft.companyName} />
+        </label>
+        <label className="form-field">
+          <span>Job title</span>
+          <input maxLength={200} onChange={(event) => update('jobTitle', event.target.value)} required value={draft.jobTitle} />
+        </label>
+        <label className="form-field">
+          <span>Location</span>
+          <input maxLength={200} onChange={(event) => update('location', event.target.value)} value={draft.location} />
+        </label>
+        <label className="form-field">
+          <span>Salary</span>
+          <input min="0" onChange={(event) => update('salary', event.target.value)} step="0.01" type="number" value={draft.salary} />
+        </label>
+        <label className="form-field">
+          <span>Application date</span>
+          <input onChange={(event) => update('applicationDate', event.target.value)} required type="date" value={draft.applicationDate} />
+        </label>
+        <label className="form-field">
+          <span>Status</span>
+          <select onChange={(event) => update('status', event.target.value as ApplicationStatus)} value={draft.status}>
+            {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+        </label>
+        <label className="form-field editor-wide">
+          <span>Job posting URL</span>
+          <input maxLength={2048} onChange={(event) => update('jobUrl', event.target.value)} type="url" value={draft.jobUrl} />
+        </label>
+        <label className="form-field editor-wide">
+          <span>Notes</span>
+          <textarea maxLength={5000} onChange={(event) => update('notes', event.target.value)} rows={3} value={draft.notes} />
+        </label>
+        {error && <p className="form-error editor-wide" role="alert">{error}</p>}
+        <div className="editor-actions editor-wide">
+          <button className="submit-button" disabled={saving} type="submit">
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Add application'}
+          </button>
+          <button className="filter-button" disabled={saving} onClick={onCancel} type="button">Cancel</button>
         </div>
-      </section>
-    </main>
+      </form>
+    </section>
   )
 }
 

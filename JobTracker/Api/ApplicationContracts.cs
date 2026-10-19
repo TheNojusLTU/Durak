@@ -105,3 +105,5 @@ public record ApplicationRequest(
         Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
         (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 }
+
+public sealed record ApplicationImportResponse(int ImportedCount);
