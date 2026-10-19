@@ -32,10 +32,10 @@ public record ApplicationRequest(
     decimal? Salary,
     string? JobUrl,
     DateTime? ApplicationDate,
-    ApplicationStatus Status = ApplicationStatus.Saved,
+    ApplicationStatus? Status = null,
     string? Notes = null)
 {
-    public Dictionary<string, string[]> Validate()
+    public Dictionary<string, string[]> Validate(bool requireStatus = false)
     {
         var errors = new Dictionary<string, string[]>();
 
@@ -69,7 +69,11 @@ public record ApplicationRequest(
             errors[nameof(ApplicationDate)] = ["Enter a valid application date."];
         }
 
-        if (!Enum.IsDefined(Status))
+        if (Status is null && requireStatus)
+        {
+            errors[nameof(Status)] = ["Status is required when updating an application."];
+        }
+        else if (Status is not null && !Enum.IsDefined(Status.Value))
         {
             errors[nameof(Status)] = ["Choose a valid application status."];
         }
@@ -91,7 +95,8 @@ public record ApplicationRequest(
         application.JobUrl = string.IsNullOrWhiteSpace(JobUrl) ? null : JobUrl.Trim();
         // postgres timestamptz only accepts UTC, same as the old form handler
         application.ApplicationDate = DateTime.SpecifyKind(ApplicationDate!.Value.Date, DateTimeKind.Utc);
-        application.Status = Status;
+        // new applications start as Saved, updates must send a status (checked in Validate)
+        application.Status = Status ?? ApplicationStatus.Saved;
         application.Notes = string.IsNullOrWhiteSpace(Notes) ? null : Notes.Trim();
     }
 

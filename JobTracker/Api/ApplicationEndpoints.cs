@@ -104,7 +104,7 @@ public static class ApplicationEndpoints
         ClaimsPrincipal user,
         ApplicationDbContext dbContext)
     {
-        var errors = request.Validate();
+        var errors = request.Validate(requireStatus: true);
         if (errors.Count > 0)
         {
             return TypedResults.ValidationProblem(errors);
