@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+using JobTracker.Api;
 using JobTracker.Auth;
 using JobTracker.Data;
 using Microsoft.AspNetCore.Identity;
@@ -8,6 +10,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 // Let invalid JSON/body binding return 400/415, then format it through status-code pages.
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails(options =>
 {
     options.CustomizeProblemDetails = context =>
@@ -68,7 +72,13 @@ builder.Services.ConfigureApplicationCookie(options =>
 var app = builder.Build();
 
 // Use Problem Details for unhandled exceptions and empty error responses in every environment.
-app.UseExceptionHandler();
+app.UseExceptionHandler(new ExceptionHandlerOptions
+{
+    // invalid request bodies (bad json, unknown enum value) are the client's fault, so 400 not 500
+    StatusCodeSelector = exception => exception is BadHttpRequestException badRequest
+        ? badRequest.StatusCode
+        : StatusCodes.Status500InternalServerError
+});
 app.UseStatusCodePages();
 
 if (app.Environment.IsDevelopment())
@@ -93,5 +103,7 @@ app.MapGet("/api/health", () => TypedResults.Ok(new { status = "healthy" }))
     .WithSummary("Checks that the API host is running.")
     .WithDescription("Liveness only; does not connect to PostgreSQL or check other dependencies.")
     .AllowAnonymous();
+
+app.MapApplicationEndpoints();
 
 app.Run();

@@ -17,10 +17,15 @@ public readonly struct DateRange
 
     public DateTime? To { get; }
 
+    // start of the From day, in UTC because postgres timestamptz only compares with UTC values
+    public DateTime? StartUtc => From is null ? null : DateTime.SpecifyKind(From.Value.Date, DateTimeKind.Utc);
+
+    // start of the day after To, so the whole To day is included
+    public DateTime? EndUtc => To is null ? null : DateTime.SpecifyKind(To.Value.Date.AddDays(1), DateTimeKind.Utc);
+
     public bool Contains(DateTime date)
     {
-        // compare whole days so the To day is included
-        return (From is null || date.Date >= From.Value.Date) &&
-               (To is null || date.Date <= To.Value.Date);
+        return (StartUtc is null || date >= StartUtc) &&
+               (EndUtc is null || date < EndUtc);
     }
 }
