@@ -50,7 +50,7 @@ Open the frontend URL printed by Vite. Requests to `/api` are forwarded to `http
 
 The server no longer hosts Blazor pages. The old form routes `/account/login`, `/account/logout`, `/account/register`, and `/account/applications/save` return **404**. Their UI files remain for later cleanup.
 
-Database models, migrations, and Identity configuration are preserved. Authentication APIs, application CRUD, and React API integration are separate follow-up work; the frontend currently remains a UI scaffold.
+Database models and migrations are preserved. Cookie authentication APIs are implemented in KAN-70; see [authentication endpoints, CSRF setup, and API checks](docs/authentication.md). Application CRUD and React API integration remain follow-up work; the frontend currently remains a UI scaffold.
 
 ## Checks
 
