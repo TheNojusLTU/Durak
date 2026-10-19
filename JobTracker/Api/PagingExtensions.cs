@@ -39,6 +39,12 @@ public static class PagingExtensions
             errors["pageSize"] = [$"Page size must be between 1 and {MaxPageSize}."];
         }
 
+        // multiply as long so a huge page can't overflow the int offset used by Skip
+        if (errors.Count == 0 && (long)(page - 1) * pageSize > int.MaxValue)
+        {
+            errors["page"] = ["Page is too large."];
+        }
+
         return errors;
     }
 }
