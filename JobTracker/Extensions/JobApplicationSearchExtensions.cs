@@ -4,7 +4,7 @@ namespace JobTracker.Extensions;
 
 public static class JobApplicationSearchExtensions
 {
-    public static IEnumerable<JobApplication> Search(this IEnumerable<JobApplication> applications, string? text)
+    public static IQueryable<JobApplication> Search(this IQueryable<JobApplication> applications, string? text)
     {
         ArgumentNullException.ThrowIfNull(applications);
 
@@ -13,10 +13,18 @@ public static class JobApplicationSearchExtensions
             return applications;
         }
 
-        var term = text.Trim();
+        var term = text.Trim().ToLower();
 
+        // ToLower + Contains instead of StringComparison so EF can turn it into SQL
         return applications.Where(a =>
-            a.CompanyName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-            a.JobTitle.Contains(term, StringComparison.OrdinalIgnoreCase));
+            a.CompanyName.ToLower().Contains(term) ||
+            a.JobTitle.ToLower().Contains(term));
+    }
+
+    public static IEnumerable<JobApplication> Search(this IEnumerable<JobApplication> applications, string? text)
+    {
+        ArgumentNullException.ThrowIfNull(applications);
+
+        return applications.AsQueryable().Search(text);
     }
 }
