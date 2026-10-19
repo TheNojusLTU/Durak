@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+using JobTracker.Api;
 using JobTracker.Data;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -5,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails(options =>
 {
     options.CustomizeProblemDetails = context =>
@@ -74,5 +78,7 @@ app.MapGet("/api/health", () => TypedResults.Ok(new { status = "healthy" }))
     .WithSummary("Checks that the API host is running.")
     .WithDescription("Liveness only; does not connect to PostgreSQL or check other dependencies.")
     .AllowAnonymous();
+
+app.MapApplicationEndpoints();
 
 app.Run();
