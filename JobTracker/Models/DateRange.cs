@@ -1,6 +1,6 @@
 namespace JobTracker.Models;
 
-public readonly struct DateRange
+public readonly struct DateRange : IEquatable<DateRange>
 {
     public DateRange(DateTime? from, DateTime? to)
     {
@@ -22,6 +22,16 @@ public readonly struct DateRange
 
     // start of the day after To, so the whole To day is included
     public DateTime? EndUtc => To is null ? null : DateTime.SpecifyKind(To.Value.Date.AddDays(1), DateTimeKind.Utc);
+
+    public bool Equals(DateRange other) => From == other.From && To == other.To;
+
+    public override bool Equals(object? obj) => obj is DateRange other && Equals(other);
+
+    public override int GetHashCode() => HashCode.Combine(From, To);
+
+    public static bool operator ==(DateRange left, DateRange right) => left.Equals(right);
+
+    public static bool operator !=(DateRange left, DateRange right) => !left.Equals(right);
 
     public bool Contains(DateTime date)
     {

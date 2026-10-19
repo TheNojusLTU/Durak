@@ -105,7 +105,7 @@ public static class AuthEndpoints
         }
         // The unique index also handles simultaneous registrations of the same normalized username.
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
-            { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "UserNameIndex" })
+        { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "UserNameIndex" })
         {
             return DuplicateUsername();
         }

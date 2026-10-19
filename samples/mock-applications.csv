@@ -1,0 +1,6 @@
+CompanyName,JobTitle,Location,Salary,JobUrl,ApplicationDate,Status,Notes
+"Northstar Analytics","Junior Data Analyst","Vilnius, Lithuania",32000,https://example.com/jobs/data-analyst,2026-10-02,Applied,"Sent CV and cover letter"
+"Amber Pixel Studio","Frontend Developer",Kaunas,36000,https://example.com/jobs/frontend,2026-10-05,Interview,"First interview scheduled"
+"Greenfield Systems","Software Engineering Intern","Remote",18000,,2026-10-08,Saved,"Preparing application"
+"Baltic Cloud Labs","Backend Developer","Vilnius",42000,https://example.com/jobs/backend,2026-10-10,Rejected,""
+"Paper Plane Games","QA Engineer","Remote",28000,https://example.com/jobs/qa,2026-10-14,Offer,"Offer received; review terms"
