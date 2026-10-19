@@ -4,8 +4,8 @@ namespace JobTracker.Extensions;
 
 public static class JobApplicationFilterExtensions
 {
-    public static IEnumerable<JobApplication> Filter(
-        this IEnumerable<JobApplication> applications,
+    public static IQueryable<JobApplication> Filter(
+        this IQueryable<JobApplication> applications,
         ApplicationStatus? status = null,
         string? location = null,
         DateRange? dates = null)
@@ -21,15 +21,34 @@ public static class JobApplicationFilterExtensions
 
         if (!string.IsNullOrWhiteSpace(location))
         {
-            var place = location.Trim();
-            result = result.Where(a => a.Location != null && a.Location.Contains(place, StringComparison.OrdinalIgnoreCase));
+            var place = location.Trim().ToLower();
+            result = result.Where(a => a.Location != null && a.Location.ToLower().Contains(place));
         }
 
         if (dates is { } range)
         {
-            result = result.Where(a => range.Contains(a.ApplicationDate));
+            if (range.StartUtc is { } start)
+            {
+                result = result.Where(a => a.ApplicationDate >= start);
+            }
+
+            if (range.EndUtc is { } end)
+            {
+                result = result.Where(a => a.ApplicationDate < end);
+            }
         }
 
         return result;
+    }
+
+    public static IEnumerable<JobApplication> Filter(
+        this IEnumerable<JobApplication> applications,
+        ApplicationStatus? status = null,
+        string? location = null,
+        DateRange? dates = null)
+    {
+        ArgumentNullException.ThrowIfNull(applications);
+
+        return applications.AsQueryable().Filter(status, location, dates);
     }
 }

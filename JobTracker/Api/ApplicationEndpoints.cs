@@ -30,7 +30,7 @@ public static class ApplicationEndpoints
         return app;
     }
 
-    public static async Task<Results<Ok<List<ApplicationResponse>>, ValidationProblem>> GetApplications(
+    public static async Task<Results<Ok<PagedResponse<ApplicationResponse>>, ValidationProblem>> GetApplications(
         ClaimsPrincipal user,
         ApplicationDbContext dbContext,
         string? search = null,
@@ -38,30 +38,32 @@ public static class ApplicationEndpoints
         string? location = null,
         DateTime? from = null,
         DateTime? to = null,
-        bool newestFirst = true)
+        bool newestFirst = true,
+        int page = 1,
+        int pageSize = PagingExtensions.DefaultPageSize)
     {
+        var errors = PagingExtensions.ValidatePaging(page, pageSize);
         if (from is not null && to is not null && from.Value.Date > to.Value.Date)
         {
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["from"] = ["From date can't be after To date."]
-            });
+            errors["from"] = ["From date can't be after To date."];
+        }
+
+        if (errors.Count > 0)
+        {
+            return TypedResults.ValidationProblem(errors);
         }
 
         var userId = GetUserId(user);
-        var applications = await dbContext.JobApplications
-            .AsNoTracking()
-            .Where(a => a.UserId == userId)
-            .ToListAsync();
-
         DateRange? dates = from is null && to is null ? null : new DateRange(from, to);
 
-        var result = applications
+        // everything up to the paging runs as one SQL query, nothing is loaded before that
+        var result = await dbContext.JobApplications
+            .AsNoTracking()
+            .Where(a => a.UserId == userId)
             .Search(search)
             .Filter(status: status, location: location, dates: dates)
             .SortByDate(newestFirst)
-            .Select(ApplicationResponse.From)
-            .ToList();
+            .ToPagedResponseAsync(page, pageSize, ApplicationResponse.From);
 
         return TypedResults.Ok(result);
     }
