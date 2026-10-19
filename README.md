@@ -50,7 +50,7 @@ Open the frontend URL printed by Vite. Requests to `/api` are forwarded to `http
 
 The server no longer hosts Blazor pages. The old form routes `/account/login`, `/account/logout`, `/account/register`, and `/account/applications/save` return **404**. Their UI files remain for later cleanup.
 
-Database models and migrations are preserved. Cookie authentication APIs are implemented in KAN-70; see [authentication endpoints, CSRF setup, and API checks](docs/authentication.md). Application CRUD and React API integration remain follow-up work; the frontend currently remains a UI scaffold.
+Database models and migrations are preserved. Cookie authentication APIs are implemented in KAN-70; see [authentication endpoints, CSRF setup, and API checks](docs/authentication.md). The React frontend now provides registration, login, and cookie-backed session handling against that API. KAN-71 provides application CRUD, filtering, and pagination endpoints; connecting those endpoints to the dashboard remains follow-up work.
 
 ## Checks
 
