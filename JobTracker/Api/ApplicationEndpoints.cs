@@ -2,6 +2,7 @@ using System.Security.Claims;
 using JobTracker.Data;
 using JobTracker.Extensions;
 using JobTracker.Models;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,11 +21,27 @@ public static class ApplicationEndpoints
             .WithSummary("Lists the current user's applications, with optional search, filters and sorting.");
         group.MapGet("/{id:int}", GetApplication)
             .WithName("GetApplication");
-        group.MapPost("/", CreateApplication)
+
+        // same CSRF check as the auth POSTs, only for requests that change data
+        var writes = group.MapGroup("");
+        writes.AddEndpointFilter(async (context, next) =>
+        {
+            var antiforgery = context.HttpContext.RequestServices.GetRequiredService<IAntiforgery>();
+            if (!await antiforgery.IsRequestValidAsync(context.HttpContext))
+            {
+                return Results.Problem(statusCode: StatusCodes.Status400BadRequest,
+                    title: "Invalid CSRF token.",
+                    detail: "Get /api/auth/csrf and send its request token in the X-CSRF-TOKEN header with the companion cookie.");
+            }
+
+            return await next(context);
+        });
+
+        writes.MapPost("/", CreateApplication)
             .WithName("CreateApplication");
-        group.MapPut("/{id:int}", UpdateApplication)
+        writes.MapPut("/{id:int}", UpdateApplication)
             .WithName("UpdateApplication");
-        group.MapDelete("/{id:int}", DeleteApplication)
+        writes.MapDelete("/{id:int}", DeleteApplication)
             .WithName("DeleteApplication");
 
         return app;
