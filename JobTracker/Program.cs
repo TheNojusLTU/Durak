@@ -55,7 +55,13 @@ builder.Services.ConfigureApplicationCookie(options =>
 var app = builder.Build();
 
 // Use Problem Details for unhandled exceptions and empty error responses in every environment.
-app.UseExceptionHandler();
+app.UseExceptionHandler(new ExceptionHandlerOptions
+{
+    // invalid request bodies (bad json, unknown enum value) are the client's fault, so 400 not 500
+    StatusCodeSelector = exception => exception is BadHttpRequestException badRequest
+        ? badRequest.StatusCode
+        : StatusCodes.Status500InternalServerError
+});
 app.UseStatusCodePages();
 
 if (app.Environment.IsDevelopment())
