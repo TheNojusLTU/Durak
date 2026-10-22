@@ -30,6 +30,10 @@
     {
         <p class="applications-error" role="alert">@Error</p>
     }
+    @if (Deleted)
+    {
+        <p class="applications-success" role="status">Application deleted.</p>
+    }
 
     @if (UserId is null)
     {
@@ -76,7 +80,18 @@
                                     </span>
                                 </td>
                                 <td data-label="Actions">
-                                    <a class="application-edit-link" href="@($"/applications/{application.Id}/edit")">Edit</a>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <a class="btn btn-outline-primary btn-sm" href="@($"/applications/{application.Id}/edit")">
+                                            Edit
+                                        </a>
+                                        <form action="/account/applications/delete" method="post" class="m-0">
+                                            <AntiforgeryToken />
+                                            <input type="hidden" name="Id" value="@application.Id" />
+                                            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Delete this application?')">
+                                                Delete
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         }
@@ -97,6 +112,9 @@
 
     [SupplyParameterFromQuery]
     private bool Saved { get; set; }
+
+    [SupplyParameterFromQuery(Name = "deleted")]
+    private bool Deleted { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
