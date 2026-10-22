@@ -1,19 +1,25 @@
-using JobTracker.Client.Pages;
-using JobTracker.Components;
+using System.Text.Json.Serialization;
+using JobTracker.Api;
+using JobTracker.Auth;
 using JobTracker.Data;
-using JobTracker.Models;
-using System.Globalization;
-using System.Net.Mail;
-using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents()
-    .AddInteractiveWebAssemblyComponents();
+builder.Services.AddOpenApi();
+// Let invalid JSON/body binding return 400/415, then format it through status-code pages.
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddProblemDetails(options =>
+{
+    options.CustomizeProblemDetails = context =>
+    {
+        context.ProblemDetails.Instance = context.HttpContext.Request.Path;
+        context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+    };
+});
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(
@@ -34,269 +40,63 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
 builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme)
     .AddIdentityCookies();
 builder.Services.AddAuthorization();
-builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-TOKEN";
+    options.Cookie.Name = "JobTracker.Antiforgery";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+});
 builder.Services.ConfigureApplicationCookie(options =>
 {
-    options.LoginPath = "/login";
+    options.Cookie.Name = "JobTracker.Auth";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+    // API clients need status codes rather than redirects to the former Blazor pages.
+    options.Events.OnRedirectToLogin = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return Task.CompletedTask;
+    };
 });
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Use Problem Details for unhandled exceptions and empty error responses in every environment.
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+
 if (app.Environment.IsDevelopment())
 {
-    app.UseWebAssemblyDebugging();
+    app.MapOpenApi();
+    app.UseSwaggerUI(options =>
+        options.SwaggerEndpoint("/openapi/v1.json", "JobTracker API v1"));
 }
 else
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
+    app.UseHttpsRedirection();
 }
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.UseAntiforgery();
+app.MapAuthEndpoints();
 
-app.MapPost("/account/login", async (
-    HttpContext httpContext,
-    IAntiforgery antiforgery,
-    SignInManager<ApplicationUser> signInManager) =>
-{
-    if (!await antiforgery.IsRequestValidAsync(httpContext))
-    {
-        return Results.BadRequest();
-    }
-
-    var form = await httpContext.Request.ReadFormAsync();
-    var userName = form["Username"].ToString().Trim();
-    var password = form["Password"].ToString();
-    var returnUrl = form["ReturnUrl"].ToString();
-
-    var result = await signInManager.PasswordSignInAsync(
-        userName,
-        password,
-        isPersistent: false,
-        lockoutOnFailure: true);
-
-    if (result.Succeeded)
-    {
-        var isLocalReturnUrl = returnUrl.StartsWith("/", StringComparison.Ordinal)
-            && !returnUrl.StartsWith("//", StringComparison.Ordinal)
-            && !returnUrl.StartsWith("/\\", StringComparison.Ordinal)
-            && !returnUrl.Contains('\\');
-        var redirectUrl = isLocalReturnUrl ? returnUrl : "/profile";
-
-        return Results.LocalRedirect(redirectUrl);
-    }
-
-    return Results.Redirect($"/login?error={Uri.EscapeDataString("Invalid username or password.")}");
-}).AllowAnonymous();
-
-app.MapPost("/account/logout", async (
-    HttpContext httpContext,
-    IAntiforgery antiforgery,
-    SignInManager<ApplicationUser> signInManager) =>
-{
-    if (!await antiforgery.IsRequestValidAsync(httpContext))
-    {
-        return Results.BadRequest();
-    }
-
-    await signInManager.SignOutAsync();
-    return Results.LocalRedirect("/");
-}).RequireAuthorization();
-
-app.MapPost("/account/applications/save", async (
-    HttpContext httpContext,
-    IAntiforgery antiforgery,
-    UserManager<ApplicationUser> userManager,
-    ApplicationDbContext dbContext) =>
-{
-    if (!await antiforgery.IsRequestValidAsync(httpContext))
-    {
-        return Results.BadRequest();
-    }
-
-    var user = await userManager.GetUserAsync(httpContext.User);
-    if (user is null)
-    {
-        return Results.Challenge();
-    }
-
-    var form = await httpContext.Request.ReadFormAsync();
-    var idInput = form["Id"].ToString();
-    var applicationId = 0;
-    if (idInput.Length > 0 && (!int.TryParse(idInput, out applicationId) || applicationId < 0))
-    {
-        return Results.BadRequest();
-    }
-
-    var formUrl = applicationId > 0
-        ? $"/applications/{applicationId}/edit"
-        : "/create-application";
-    IResult Invalid(string message) =>
-        Results.Redirect($"{formUrl}?error={Uri.EscapeDataString(message)}");
-
-    JobApplication? application = null;
-    if (applicationId > 0)
-    {
-        application = await dbContext.JobApplications
-            .SingleOrDefaultAsync(item => item.Id == applicationId && item.UserId == user.Id);
-        if (application is null)
-        {
-            return Results.NotFound();
-        }
-    }
-
-    var companyName = form["CompanyName"].ToString().Trim();
-    var jobTitle = form["JobTitle"].ToString().Trim();
-    var location = form["Location"].ToString().Trim();
-    var salaryInput = form["Salary"].ToString();
-    var jobUrl = form["JobUrl"].ToString().Trim();
-    var applicationDateInput = form["ApplicationDate"].ToString();
-    var statusInput = form["Status"].ToString();
-    var notes = form["Notes"].ToString().Trim();
-
-    if (companyName.Length is < 1 or > 200)
-    {
-        return Invalid("Company name is required and must be 200 characters or fewer.");
-    }
-    if (jobTitle.Length is < 1 or > 200)
-    {
-        return Invalid("Job title is required and must be 200 characters or fewer.");
-    }
-    if (location.Length > 200)
-    {
-        return Invalid("Location must be 200 characters or fewer.");
-    }
-    if (jobUrl.Length > 2048 ||
-        (jobUrl.Length > 0 &&
-         (!Uri.TryCreate(jobUrl, UriKind.Absolute, out var parsedJobUrl) ||
-          (parsedJobUrl.Scheme != Uri.UriSchemeHttp && parsedJobUrl.Scheme != Uri.UriSchemeHttps))))
-    {
-        return Invalid("Enter a valid http or https job posting URL.");
-    }
-    if (notes.Length > 5000)
-    {
-        return Invalid("Notes must be 5,000 characters or fewer.");
-    }
-
-    decimal? salary = null;
-    if (salaryInput.Length > 0)
-    {
-        if (!decimal.TryParse(
-                salaryInput,
-                NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
-                CultureInfo.InvariantCulture,
-                out var parsedSalary) ||
-            parsedSalary < 0)
-        {
-            return Invalid("Salary must be a non-negative number.");
-        }
-        salary = parsedSalary;
-    }
-
-    if (!DateTime.TryParseExact(
-            applicationDateInput,
-            "yyyy-MM-dd",
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.None,
-            out var parsedDate))
-    {
-        return Invalid("Enter a valid application date.");
-    }
-
-    if (!Enum.TryParse<ApplicationStatus>(statusInput, ignoreCase: false, out var status) ||
-        !Enum.IsDefined(status))
-    {
-        return Invalid("Choose a valid application status.");
-    }
-
-    application ??= new JobApplication { UserId = user.Id };
-    application.CompanyName = companyName;
-    application.JobTitle = jobTitle;
-    application.Location = string.IsNullOrWhiteSpace(location) ? null : location;
-    application.Salary = salary;
-    application.JobUrl = string.IsNullOrWhiteSpace(jobUrl) ? null : jobUrl;
-    application.ApplicationDate = DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc);
-    application.Status = status;
-    application.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes;
-
-    if (applicationId == 0)
-    {
-        dbContext.JobApplications.Add(application);
-    }
-
-    await dbContext.SaveChangesAsync();
-    return Results.LocalRedirect("/applications?saved=true");
-}).RequireAuthorization();
-
-app.MapPost("/account/register", async (
-    HttpContext httpContext,
-    IAntiforgery antiforgery,
-    UserManager<ApplicationUser> userManager,
-    SignInManager<ApplicationUser> signInManager) =>
-{
-    if (!await antiforgery.IsRequestValidAsync(httpContext))
-    {
-        return Results.BadRequest();
-    }
-
-    var form = await httpContext.Request.ReadFormAsync();
-    var userName = form["Username"].ToString().Trim();
-    var displayName = form["DisplayName"].ToString().Trim();
-    var emailInput = form["Email"].ToString().Trim();
-    var password = form["Password"].ToString();
-    var avatarKey = form["AvatarKey"].ToString();
-
-    string? validationError = null;
-    if (userName.Length is < 3 or > 20)
-    {
-        validationError = "Username must be between 3 and 20 characters.";
-    }
-    else if (displayName.Length is < 3 or > 20)
-    {
-        validationError = "Display name must be between 3 and 20 characters.";
-    }
-    else if (emailInput.Length > 0 && !MailAddress.TryCreate(emailInput, out _))
-    {
-        validationError = "Enter a valid email address, or leave it blank.";
-    }
-    else if (password.Length == 0)
-    {
-        validationError = "Password is required.";
-    }
-    else if (avatarKey.Length > 0 && !AvatarCatalog.Contains(avatarKey))
-    {
-        validationError = "Choose an available avatar.";
-    }
-
-    if (validationError is not null)
-    {
-        return Results.Redirect($"/register?error={Uri.EscapeDataString(validationError)}");
-    }
-
-    var user = new ApplicationUser
-    {
-        UserName = userName,
-        Email = string.IsNullOrWhiteSpace(emailInput) ? null : emailInput,
-        DisplayName = displayName,
-        AvatarKey = string.IsNullOrWhiteSpace(avatarKey) ? AvatarCatalog.Default.Key : avatarKey
-    };
-
-    var createResult = await userManager.CreateAsync(user, password);
-    if (!createResult.Succeeded)
-    {
-        var error = string.Join(" ", createResult.Errors.Select(identityError => identityError.Description));
-        return Results.Redirect($"/register?error={Uri.EscapeDataString(error)}");
-    }
-
-    await signInManager.SignInAsync(user, isPersistent: false);
-    return Results.LocalRedirect("/profile");
-}).AllowAnonymous();
+app.MapGet("/api/health", () => TypedResults.Ok(new { status = "healthy" }))
+    .WithName("GetHealth")
+    .WithSummary("Checks that the API host is running.")
+    .WithDescription("Liveness only; does not connect to PostgreSQL or check other dependencies.")
+    .AllowAnonymous();
 
 app.MapPost("/account/applications/delete", async (
     HttpContext httpContext,

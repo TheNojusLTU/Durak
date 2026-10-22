@@ -1,54 +1,63 @@
 # Job Application Tracker
 
-A web application for tracking job applications throughout the hiring process.
+A Software Engineering course project for tracking job applications.
 
-This project is being developed for a Software Engineering course using **C#** and **ASP.NET Core**.
+- `JobTracker`: ASP.NET Core (.NET 10) backend API with PostgreSQL, EF Core, and Identity.
+- `JobTracker.Web`: separate React + TypeScript frontend using Vite.
 
-## Features
+Planned features include accounts, application tracking, search, interviews, and dashboard statistics.
 
-Planned features include:
+## Setup
 
-- User registration and login
-- Create, view, edit, and delete job applications
-- Application status tracking
-- Application status history
-- Interview management
-- Search and filtering
-- Dashboard with application overview
-- Job search statistics
-- CV and cover letter uploads
-- Favorite and priority applications
+Requires .NET 10, PostgreSQL, Node.js 22.x, and npm 10+.
 
-## Application Statuses
-
-Job applications can move through several stages:
-
-- Saved
-- Applied
-- Interview
-- Offer
-- Rejected
-- Withdrawn
-
-## Local Database Setup
-
-The server uses PostgreSQL. Install and start PostgreSQL locally, then create a database named `jobtracker` (for example, with `createdb jobtracker`). Set the connection string with .NET user secrets from the repository root:
+Run commands from the repository root. Start PostgreSQL and create a database named `jobtracker`. Set your local connection string, replacing the username and password as needed:
 
 ```bash
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Port=5432;Database=jobtracker;Username=postgres;Password=YOUR_LOCAL_PASSWORD" --project JobTracker/JobTracker.csproj
 ```
 
-The project already has a `UserSecretsId`, so `dotnet user-secrets init` is not needed. User secrets are stored outside the repository; do not commit database passwords. For a hosted PostgreSQL database, use the provider's host, port, database, and username, and add `SSL Mode=Require` when required by the provider.
-
-Apply the schema and run the app:
+Apply the existing database migrations:
 
 ```bash
 dotnet ef database update --project JobTracker/JobTracker.csproj --startup-project JobTracker/JobTracker.csproj
-dotnet run --project JobTracker/JobTracker.csproj
 ```
 
-The initial migration creates the Identity tables and `JobApplications`, with each job linked to its owning user.
+Keep database credentials out of the repository.
 
-## Account Registration
+## Run
 
-Registration uses a unique username (3–20 characters) and password; display name is required (3–20 characters), while email is optional. Email confirmation is disabled for now. Passwords must be at least 8 characters and contain an uppercase letter, a lowercase letter, and a number. ASP.NET Core Identity stores password hashes, and a successful registration signs the user in and redirects to their profile.
+Start the API:
+
+```bash
+dotnet run --project JobTracker/JobTracker.csproj --launch-profile http
+```
+
+Start the frontend in another terminal:
+
+```bash
+npm --prefix JobTracker.Web install
+npm --prefix JobTracker.Web run dev
+```
+
+Open the frontend URL printed by Vite. Requests to `/api` are forwarded to `http://localhost:5099`, so local development does not need browser CORS configuration.
+
+## API Foundation (KAN-69)
+
+- Health: `GET http://localhost:5099/api/health` returns **200** and `{"status":"healthy"}`. It checks the API host, not the database.
+- Swagger: `http://localhost:5099/swagger` in Development; OpenAPI JSON is at `/openapi/v1.json`.
+- Errors: API errors use JSON Problem Details with a request path and trace ID.
+
+The server no longer hosts Blazor pages. The old form routes `/account/login`, `/account/logout`, `/account/register`, and `/account/applications/save` return **404**. Their UI files remain for later cleanup.
+
+Database models and migrations are preserved. Cookie authentication APIs are implemented in KAN-70; see [authentication endpoints, CSRF setup, and API checks](docs/authentication.md). The React frontend provides registration, login, and cookie-backed session handling. Authenticated users can list, search/filter, create, and edit applications, including updating their status, through the KAN-71 API. Application write requests include the API's required CSRF token.
+
+The React application list also supports importing CSV files through `POST /api/applications/import`. The CSV must have these columns, in order: `CompanyName,JobTitle,Location,Salary,JobUrl,ApplicationDate,Status,Notes`. Use `YYYY-MM-DD` dates, invariant decimal notation, and a valid status name; optional values may be left blank. Imports are limited to 1 MB and 500 rows and are all-or-nothing.
+
+## Checks
+
+```bash
+dotnet build
+npm --prefix JobTracker.Web run lint
+npm --prefix JobTracker.Web run build
+```
